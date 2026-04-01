@@ -14,10 +14,26 @@ app.use((req: Request, res: Response) => {
 
 app.use((err: unknown, _req: Request, res: Response, _next: NextFunction) => {
   console.error(err);
-  res.status(500).json({ error: "Internal Server Error" });
+  const isProd = process.env.NODE_ENV === "production";
+  const message = err instanceof Error ? err.message : "Internal Server Error";
+
+  const dbUrl = process.env.DATABASE_URL ?? "";
+  const looksLikeSqlite = dbUrl.startsWith("file:");
+  const looksLikeConnRefused = typeof err === "object" && err !== null && "code" in err && (err as any).code === "ECONNREFUSED";
+
+  if (!isProd && (looksLikeSqlite || looksLikeConnRefused)) {
+    return res.status(500).json({
+      error: "Database connection failed",
+      hint: looksLikeSqlite
+        ? "Your DATABASE_URL is set to a sqlite file (file:...). This server uses Postgres. Update server/.env DATABASE_URL to a Postgres connection string."
+        : "Connection refused. Check that your Postgres/Supabase is reachable and DATABASE_URL is correct.",
+    });
+  }
+
+  return res.status(500).json({ error: isProd ? "Internal Server Error" : message });
 });
 
-const port = process.env.PORT ? Number(process.env.PORT) : 3001;
+const port = process.env.PORT ? Number(process.env.PORT) : 3010;
 if (!Number.isFinite(port) || port <= 0) {
   throw new Error(`Invalid PORT: ${process.env.PORT}`);
 }
@@ -35,3 +51,7 @@ function shutdown(signal: string) {
 
 process.on("SIGINT", () => shutdown("SIGINT"));
 process.on("SIGTERM", () => shutdown("SIGTERM"));
+
+process.on("unhandledRejection", (reason) => {
+  console.error("Unhandled promise rejection:", reason);
+});
