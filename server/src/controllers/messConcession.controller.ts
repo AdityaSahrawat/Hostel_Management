@@ -15,10 +15,9 @@ export async function createMessConcession(req: Request, res: Response) {
     days,
     start_date,
     end_date,
-    amount,
     student_id,
   } = req.body as {
-    image_url?: string;
+    image_url?: string | null;
     imageDataUrl?: string;
     image_data_url?: string;
     imageBase64?: string;
@@ -28,7 +27,6 @@ export async function createMessConcession(req: Request, res: Response) {
     days?: number;
     start_date?: string;
     end_date?: string;
-    amount?: number;
     student_id?: string;
   };
 
@@ -36,15 +34,14 @@ export async function createMessConcession(req: Request, res: Response) {
     typeof days !== "number" ||
     !start_date ||
     !end_date ||
-    typeof amount !== "number" ||
     !student_id
   ) {
     return res
       .status(400)
-      .json({ error: "days, start_date, end_date, amount, student_id are required" });
+      .json({ error: "days, start_date, end_date, student_id are required" });
   }
 
-  let finalImageUrl = image_url;
+  let finalImageUrl = image_url ?? undefined;
   const dataUrl = imageDataUrl ?? image_data_url;
   const base64 = imageBase64 ?? image_base64;
   const contentType = imageContentType ?? image_content_type;
@@ -64,17 +61,14 @@ export async function createMessConcession(req: Request, res: Response) {
     }
   }
 
-  if (!finalImageUrl) {
-    return res.status(400).json({ error: "image_url is required (or provide imageDataUrl/imageBase64)" });
-  }
+  // Image is optional. If none provided, keep it null in DB.
 
   const mc = await prisma.messConcession.create({
     data: {
-      image_url: finalImageUrl,
+      image_url: finalImageUrl ?? null,
       days,
       start_date: new Date(start_date),
       End_date: new Date(end_date),
-      amount,
       student_id,
     },
   });
@@ -98,12 +92,11 @@ export async function getMessConcession(req: Request, res: Response) {
 
 export async function updateMessConcession(req: Request, res: Response) {
   const { id } = req.params;
-  const { image_url, days, start_date, end_date, amount } = req.body as {
-    image_url?: string;
+  const { image_url, days, start_date, end_date } = req.body as {
+    image_url?: string | null;
     days?: number;
     start_date?: string;
     end_date?: string;
-    amount?: number;
   };
 
   const existing = await prisma.messConcession.findUnique({ where: { id } });
@@ -116,7 +109,6 @@ export async function updateMessConcession(req: Request, res: Response) {
       days,
       start_date: start_date ? new Date(start_date) : undefined,
       End_date: end_date ? new Date(end_date) : undefined,
-      amount,
     },
   });
 
