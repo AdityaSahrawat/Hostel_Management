@@ -53,6 +53,7 @@ export default function StaffLayout({ children }: { children: React.ReactNode })
             <NavLink href="/staff/students" label="Students" />
             <NavLink href="/staff/outpasses" label="Outpasses" />
             <NavLink href="/staff/messconcessions" label="Mess" />
+            <NavLink href="/staff/assignrooms" label="Assign Rooms" />
           </nav>
 
           <div className="flex items-center gap-3">
