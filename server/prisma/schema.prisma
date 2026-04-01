@@ -16,6 +16,10 @@ datasource db {
 model Student{
   id       String  @id @default(uuid())
   roll_no  String  @unique
+  name     String?
+  std_phone_no String?
+  father_name String?
+  father_phone_no String?
   branch   Branch
   state    String
   gender   Gender
@@ -41,18 +45,17 @@ model Staff {
 
 model MessConcession{
   id          String @id @default(uuid())
-  image_url   String
+  image_url   String?
   days        Int
   start_date  DateTime
   End_date    DateTime
-  amount      Int
   student_id  String
   student     Student @relation(fields: [student_id], references: [id])
 }
 
 model OutPass {
   id          String @id @default(uuid())
-  image_url   String
+  image_url   String?
   days        Int
   start_date  DateTime
   end_date    DateTime
