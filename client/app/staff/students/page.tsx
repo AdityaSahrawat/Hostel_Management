@@ -245,6 +245,43 @@ export default function StudentsPage() {
     };
   }, [activeStudentId, auth]);
 
+  function exportAsJSON() {
+    const data = filteredStudents.map((s) => ({
+      roll_no: s.roll_no,
+      name: s.name,
+      branch: s.branch,
+      state: s.state,
+      gender: s.gender,
+      room_no: s.room_no,
+    }));
+    const blob = new Blob([JSON.stringify(data, null, 2)], { type: "application/json" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = "students_export.json";
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
+  }
+
+  function exportAsCSV() {
+    const lines = ["Roll_No,Name,Branch,State,Gender,Room_No"];
+    for (const s of filteredStudents) {
+      const name = s.name ? `"${s.name.replace(/"/g, '""')}"` : "";
+      lines.push(`${s.roll_no},${name},${s.branch},${s.state},${s.gender},${s.room_no || ""}`);
+    }
+    const blob = new Blob([lines.join("\n")], { type: "text/csv;charset=utf-8;" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = "students_export.csv";
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
+  }
+
   function toggleOne(index: number, shiftKey: boolean) {
     const student = filteredStudents[index];
     if (!student) return;
@@ -529,8 +566,28 @@ export default function StudentsPage() {
       </section>
 
       <section className="border border-foreground/10 rounded-xl overflow-hidden">
-        <div className="px-5 py-4 border-b border-foreground/10 flex items-center justify-between">
-          <div className="font-semibold">All students</div>
+        <div className="px-5 py-4 border-b border-foreground/10 flex flex-wrap items-center justify-between gap-4">
+          <div className="flex items-center gap-3">
+            <span className="font-semibold">All students</span>
+            <div className="flex gap-2">
+              <button
+                type="button"
+                className="text-xs rounded border border-foreground/30 px-2 py-1 hover:bg-foreground/5 disabled:opacity-50"
+                onClick={exportAsCSV}
+                disabled={filteredStudents.length === 0}
+              >
+                CSV
+              </button>
+              <button
+                type="button"
+                className="text-xs rounded border border-foreground/30 px-2 py-1 hover:bg-foreground/5 disabled:opacity-50"
+                onClick={exportAsJSON}
+                disabled={filteredStudents.length === 0}
+              >
+                JSON
+              </button>
+            </div>
+          </div>
           <div className="flex items-center gap-3">
             <label className="flex items-center gap-2 text-sm select-none">
               <input

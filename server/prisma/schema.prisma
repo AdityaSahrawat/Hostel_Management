@@ -23,8 +23,8 @@ model Student{
   branch   Branch
   state    String
   gender   Gender
-  room_no  String
-  Room     Room @relation(fields: [room_no] , references: [id])
+  room_no  String?
+  Room     Room? @relation(fields: [room_no] , references: [id])
   mess_concessions   MessConcession[]
   out_passes         OutPass[]
 }

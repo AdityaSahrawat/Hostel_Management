@@ -5,6 +5,7 @@ import messConcessionRoutes from "./messConcession.routes";
 import outpassRoutes from "./outpass.routes";
 import staffRoutes from "./staff.routes";
 import studentRoutes from "./student.routes";
+import roomRoutes from "./room.routes";
 
 const router = Router();
 
@@ -13,5 +14,6 @@ router.use(staffRoutes);
 router.use(studentRoutes);
 router.use(outpassRoutes);
 router.use(messConcessionRoutes);
+router.use(roomRoutes);
 
 export default router;

@@ -9,18 +9,11 @@ type CreateStudentBody = {
   student_phone_no?: string; // alias
   father_name?: string;
   father_phone_no?: string;
-  branch?: "CSE" | "DSAI" | "ECE" | "BDS";
+  branch?: "CSE" | "DSAI" | "ECE";
   state?: string;
   gender?: "MALE" | "FEMALE" | "OTHER";
-  room_no?: string; // references Room.id in your schema
+  room_no?: string | null; // references Room.id in your schema
 };
-
-function normalizeBranch(branch: CreateStudentBody["branch"]) {
-  if (!branch) return branch;
-  // Keep DB enum as-is (CSE/DSAI/ECE) but accept common alias.
-  if (branch === "BDS") return "DSAI";
-  return branch;
-}
 
 function isLikelyUuid(value: string) {
   // Enough for routing logic; not meant as full validation.
@@ -31,7 +24,32 @@ function toRoomNumberString(roomNo: number) {
   return String(roomNo).padStart(3, "0");
 }
 
-async function resolveRoomId(input: string, tx: { room: any } = prisma as any) {
+function validateRollNoAndBranch(rollNo: string, branch: string): string | null {
+  const normBranch = branch.toUpperCase();
+  if (!["CSE", "DSAI", "ECE"].includes(normBranch)) {
+    return "Branch can only be CSE, DSAI, or ECE";
+  }
+
+  const match = rollNo.match(/^\d+(bcs|bds|bec|cse)\d+$/i);
+  if (!match) {
+    return "Roll number must be in format: <number><bcs|bds|bec><number>";
+  }
+
+  const code = match[1].toLowerCase();
+  if (normBranch === "CSE" && code !== "bcs" && code !== "cse") {
+    return "If branch is CSE, roll number must contain 'bcs'";
+  }
+  if (normBranch === "DSAI" && code !== "bds") {
+    return "If branch is DSAI, roll number must contain 'bds'";
+  }
+  if (normBranch === "ECE" && code !== "bec") {
+    return "If branch is ECE, roll number must contain 'bec'";
+  }
+
+  return null;
+}
+
+export async function resolveRoomId(input: string, tx: { room: any } = prisma as any) {
   const trimmed = input.trim();
   if (!trimmed) throw new Error("room_no is required");
 
@@ -71,7 +89,7 @@ function serializeStudentForApi(student: {
   state: string;
   gender: string;
   Room?: { room_no: number } | null;
-  room_no: string;
+  room_no: string | null;
 }) {
   return {
     id: student.id,
@@ -93,11 +111,16 @@ export async function createStudent(req: Request, res: Response) {
 
   const gender = body.gender ?? "MALE";
 
-  if (!body.roll_no || !body.branch || !body.state || !body.room_no) {
-    return res.status(400).json({ error: "roll_no, branch, state, room_no are required" });
+  if (!body.roll_no || !body.branch || !body.state) {
+    return res.status(400).json({ error: "roll_no, branch, state are required" });
   }
 
-  const roomId = await resolveRoomId(body.room_no);
+  const validationError = validateRollNoAndBranch(body.roll_no, body.branch);
+  if (validationError) {
+    return res.status(400).json({ error: validationError });
+  }
+
+  const roomId = body.room_no ? await resolveRoomId(body.room_no) : null;
 
   const student = await prisma.student.create({
     data: {
@@ -110,7 +133,7 @@ export async function createStudent(req: Request, res: Response) {
           : undefined,
       father_name: body.father_name?.trim() ? body.father_name.trim() : undefined,
       father_phone_no: body.father_phone_no?.trim() ? body.father_phone_no.trim() : undefined,
-      branch: normalizeBranch(body.branch) as "CSE" | "DSAI" | "ECE",
+      branch: body.branch as "CSE" | "DSAI" | "ECE",
       state: body.state,
       gender,
       room_no: roomId,
@@ -128,15 +151,21 @@ export async function bulkCreateStudents(req: Request, res: Response) {
     return res.status(400).json({ error: "students[] is required" });
   }
 
-  const invalidIndex = students.findIndex((s) => !s.roll_no || !s.branch || !s.state || !s.room_no);
+  const invalidIndex = students.findIndex((s) => !s.roll_no || !s.branch || !s.state);
   if (invalidIndex !== -1) {
     return res.status(400).json({ error: `students[${invalidIndex}] is missing required fields` });
+  }
+
+  const formatInvalidIndex = students.findIndex((s) => validateRollNoAndBranch(s.roll_no!, s.branch!));
+  if (formatInvalidIndex !== -1) {
+    const err = validateRollNoAndBranch(students[formatInvalidIndex]!.roll_no!, students[formatInvalidIndex]!.branch!);
+    return res.status(400).json({ error: `students[${formatInvalidIndex}]: ${err}` });
   }
 
   // Resolve/upsert rooms (only for numeric room inputs) so Student.room_no FK points to Room.id.
   // Do this OUTSIDE an interactive transaction to avoid P2028 timeouts on larger imports.
   const uniqueRoomInputs = Array.from(
-    new Set(students.map((s) => String(s.room_no).trim()).filter((r) => r && !isLikelyUuid(r))),
+    new Set(students.map((s) => String(s.room_no || "").trim()).filter((r) => r && !isLikelyUuid(r))),
   );
 
   const roomIdByInput = new Map<string, string>();
@@ -151,8 +180,8 @@ export async function bulkCreateStudents(req: Request, res: Response) {
 
   const result = await prisma.student.createMany({
     data: students.map((s) => {
-      const roomInput = String(s.room_no).trim();
-      const resolvedRoomId = isLikelyUuid(roomInput) ? roomInput : (roomIdByInput.get(roomInput) ?? roomInput);
+      const roomInput = String(s.room_no || "").trim();
+      const resolvedRoomId = roomInput ? (isLikelyUuid(roomInput) ? roomInput : (roomIdByInput.get(roomInput) ?? roomInput)) : null;
 
       const name = s.name?.trim() ? s.name.trim() : undefined;
       const stdPhone = s.std_phone_no?.trim()
@@ -169,7 +198,7 @@ export async function bulkCreateStudents(req: Request, res: Response) {
         std_phone_no: stdPhone,
         father_name: fatherName,
         father_phone_no: fatherPhone,
-        branch: normalizeBranch(s.branch)! as "CSE" | "DSAI" | "ECE",
+        branch: s.branch! as "CSE" | "DSAI" | "ECE",
         state: s.state!,
         gender: (s.gender ?? "MALE")!,
         room_no: resolvedRoomId,
@@ -304,8 +333,11 @@ function shuffleInPlace<T>(arr: T[]) {
 
 export async function assignRooms(req: Request, res: Response) {
   const body = req.body as AssignRoomsBody;
+  
+  console.log(`[AssignRooms] Incoming req: floorA=${body.floorA}, floorB=${body.floorB}, groups count=${body.groups?.length}`);
 
   if (!Array.isArray(body.groups) || body.groups.length === 0) {
+    console.log("[AssignRooms] Error: groups array is empty or not an array");
     return res.status(400).json({ error: "groups[][] is required" });
   }
 
@@ -348,8 +380,10 @@ export async function assignRooms(req: Request, res: Response) {
   const existingSet = new Set(existingStudents.map((s) => s.roll_no));
   const missing = allRollNos.filter((r) => !existingSet.has(r));
   if (missing.length > 0) {
+    console.log(`[AssignRooms] Error: ${missing.length} students missing from DB (e.g. ${missing[0]})`);
     return res.status(400).json({ error: "Some students were not found in DB", missing_roll_nos: missing });
   }
+  console.log(`[AssignRooms] DB completely verified. All ${allRollNos.length} students exist.`);
 
   // Compute available rooms per floor. Prefer empty rooms; also allow rooms that will be fully vacated
   // by this operation (i.e., all occupants are in the provided roll_no list).
@@ -391,6 +425,10 @@ export async function assignRooms(req: Request, res: Response) {
   const poolB = floorB === floorA ? poolA : await computeAvailableRoomsForFloor(floorB);
 
   const maxOnA = floorB === floorA ? normalizedGroups.length : Math.min(normalizedGroups.length, poolA.length);
+  
+  console.log(`[AssignRooms] pool A limit: ${poolA.length}, pool B limit: ${poolB.length}`);
+  console.log(`[AssignRooms] Allocating ${maxOnA} groups to floor ${floorA}`);
+  
   const groupsWithFloor: { students: string[]; floor: number }[] = normalizedGroups.map((students, idx) => ({
     students,
     floor: idx < maxOnA ? floorA : floorB,
@@ -401,6 +439,7 @@ export async function assignRooms(req: Request, res: Response) {
     const pool = group.floor === floorA ? poolA : poolB;
     const roomNo = pool.pop();
     if (roomNo == null) {
+      console.log(`[AssignRooms] Error: Pool ran out on floor ${group.floor}!`);
       return res.status(400).json({ error: `Not enough available rooms on floor ${group.floor}` });
     }
     assignments.push({ floor: group.floor, roomNo, students: group.students });
@@ -424,6 +463,9 @@ export async function assignRooms(req: Request, res: Response) {
         data: { room_no: roomId },
       });
     }
+  }, {
+    maxWait: 10000,
+    timeout: 30000,
   });
 
   return res.status(200).json({
@@ -434,4 +476,28 @@ export async function assignRooms(req: Request, res: Response) {
       students: a.students,
     })),
   });
+}
+
+export async function moveStudentRoom(req: Request, res: Response) {
+  const { id } = req.params;
+  const { room_no } = req.body;
+  if (!room_no) return res.status(400).json({ error: "room_no is required" });
+
+  const student = await prisma.student.findUnique({ where: { id } });
+  if (!student) return res.status(404).json({ error: "Student not found" });
+
+  const roomId = await resolveRoomId(String(room_no));
+  await prisma.student.update({ where: { id }, data: { room_no: roomId } });
+
+  return res.json({ success: true });
+}
+
+export async function removeStudentRoom(req: Request, res: Response) {
+  const { id } = req.params;
+  
+  const student = await prisma.student.findUnique({ where: { id } });
+  if (!student) return res.status(404).json({ error: "Student not found" });
+
+  await prisma.student.update({ where: { id }, data: { room_no: null } });
+  return res.json({ success: true });
 }

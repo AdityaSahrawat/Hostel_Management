@@ -165,6 +165,41 @@ export default function MessConcessionsPage() {
     setImageDataUrl(result);
   }
 
+  function exportAsJSON() {
+    const data = summarized.map((m) => ({
+      roll_no: rollNoByStudentId.get(m.student_id) ?? m.student_id,
+      days: m.days,
+      image_url: m.image_url,
+    }));
+    const blob = new Blob([JSON.stringify(data, null, 2)], { type: "application/json" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = "mess_concessions_export.json";
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
+  }
+
+  function exportAsCSV() {
+    const lines = ["Roll_No,Days,Image"];
+    for (const m of summarized) {
+      const roll = rollNoByStudentId.get(m.student_id) ?? m.student_id;
+      const img = m.image_url ? `"${m.image_url.replace(/"/g, '""')}"` : "";
+      lines.push(`${roll},${m.days},${img}`);
+    }
+    const blob = new Blob([lines.join("\n")], { type: "text/csv;charset=utf-8;" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = "mess_concessions_export.csv";
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
+  }
+
   return (
     <div className="space-y-6">
       <div className="flex items-start justify-between gap-4">
@@ -287,7 +322,27 @@ export default function MessConcessionsPage() {
       <section className="border border-foreground/10 rounded-xl overflow-hidden">
         <div className="px-5 py-4 border-b border-foreground/10 flex items-center justify-between">
           <div className="font-semibold">All items</div>
-          <div className="text-sm opacity-70">{summarized.length} students</div>
+          <div className="flex items-center gap-3">
+            <div className="flex gap-2 mr-2">
+              <button
+                className="text-xs rounded border border-foreground/30 px-2 py-1 hover:bg-foreground/5 disabled:opacity-50"
+                type="button"
+              onClick={exportAsCSV}
+                disabled={summarized.length === 0}
+              >
+                CSV
+              </button>
+              <button
+                className="text-xs rounded border border-foreground/30 px-2 py-1 hover:bg-foreground/5 disabled:opacity-50"
+                type="button"
+              onClick={exportAsJSON}
+                disabled={summarized.length === 0}
+              >
+                JSON
+              </button>
+            </div>
+            <div className="text-sm opacity-70">{summarized.length} students</div>
+          </div>
         </div>
         <div className="overflow-x-auto">
           <table className="w-full text-sm">
