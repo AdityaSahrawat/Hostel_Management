@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { Fragment, useEffect, useMemo, useState } from "react";
 
 import { useAuth } from "@/app/providers";
 import { apiGet, apiPost } from "@/lib/api";
@@ -223,6 +223,7 @@ export default function StudentsPage() {
     let cancelled = false;
     setDetailsLoading(true);
     setDetailsError(null);
+    setDetails(null);
 
     apiGet<StudentDetails>(`/students/${activeStudentId}/details`, auth.token)
       .then((data) => {
@@ -286,8 +287,6 @@ export default function StudentsPage() {
     const student = filteredStudents[index];
     if (!student) return;
 
-    setActiveStudentId(student.id);
-
     setSelectedIds((prev) => {
       const next = new Set(prev);
 
@@ -307,6 +306,10 @@ export default function StudentsPage() {
     });
 
     setLastClickedIndex(index);
+  }
+
+  function toggleDetails(studentId: string) {
+    setActiveStudentId((prev) => (prev === studentId ? null : studentId));
   }
 
   async function onCreateSingle(e: React.FormEvent) {
@@ -622,140 +625,6 @@ export default function StudentsPage() {
           </div>
         </div>
 
-        {activeStudentId ? (
-          <div className="px-5 py-4 border-b border-foreground/10 bg-foreground/5">
-            <div className="flex items-start justify-between gap-3">
-              <div>
-                <div className="text-sm font-semibold">Student details</div>
-                <div className="text-xs opacity-70">Click another student to switch.</div>
-              </div>
-              <button
-                className="text-sm rounded-md px-3 py-2 border border-foreground/15 hover:border-foreground/30"
-                onClick={() => setActiveStudentId(null)}
-              >
-                Close
-              </button>
-            </div>
-
-            {detailsLoading ? <div className="mt-3 text-sm opacity-70">Loading details…</div> : null}
-            {detailsError ? <div className="mt-3 text-sm text-red-600">{detailsError}</div> : null}
-
-            {!detailsLoading && details ? (
-              <div className="mt-4 grid grid-cols-1 md:grid-cols-2 gap-4">
-                <div className="space-y-2">
-                  <div className="text-sm font-medium">Profile</div>
-                  <div className="text-sm space-y-1">
-                    <div>
-                      <span className="opacity-70">Roll:</span> <span className="font-mono">{details.student.roll_no}</span>
-                    </div>
-                    <div>
-                      <span className="opacity-70">Name:</span> {details.student.name || "—"}
-                    </div>
-                    <div>
-                      <span className="opacity-70">Student phone:</span> {details.student.std_phone_no || "—"}
-                    </div>
-                    <div>
-                      <span className="opacity-70">Father name:</span> {details.student.father_name || "—"}
-                    </div>
-                    <div>
-                      <span className="opacity-70">Father phone:</span> {details.student.father_phone_no || "—"}
-                    </div>
-                    <div>
-                      <span className="opacity-70">Branch:</span> {details.student.branch}
-                    </div>
-                    <div>
-                      <span className="opacity-70">State:</span> {details.student.state}
-                    </div>
-                    <div>
-                      <span className="opacity-70">Gender:</span> {details.student.gender}
-                    </div>
-                    <div>
-                      <span className="opacity-70">Room:</span> {details.room?.room_no ?? details.student.room_no}
-                      {details.room ? <span className="opacity-70"> (floor {details.room.floor})</span> : null}
-                    </div>
-                  </div>
-                </div>
-
-                <div className="space-y-2">
-                  <div className="text-sm font-medium">Roommates</div>
-                  {details.roommates.length === 0 ? (
-                    <div className="text-sm opacity-70">No roommates found.</div>
-                  ) : (
-                    <div className="space-y-1">
-                      {details.roommates.map((rm) => (
-                        <div key={rm.id} className="text-sm">
-                          <span className="font-mono text-xs">{rm.roll_no}</span>
-                          {rm.name ? <span className="opacity-80"> • {rm.name}</span> : null}
-                        </div>
-                      ))}
-                    </div>
-                  )}
-                </div>
-
-                <div className="space-y-2">
-                  <div className="text-sm font-medium">Outpasses</div>
-                  {details.outpasses.length === 0 ? (
-                    <div className="text-sm opacity-70">No outpasses.</div>
-                  ) : (
-                    <div className="overflow-auto border border-foreground/10 rounded-lg">
-                      <table className="w-full text-sm">
-                        <thead className="bg-background/50">
-                          <tr>
-                            <th className="text-left p-2 border-b border-foreground/10">Start</th>
-                            <th className="text-left p-2 border-b border-foreground/10">End</th>
-                            <th className="text-left p-2 border-b border-foreground/10">Days</th>
-                            <th className="text-left p-2 border-b border-foreground/10">Image</th>
-                          </tr>
-                        </thead>
-                        <tbody>
-                          {details.outpasses.map((op) => (
-                            <tr key={op.id} className="border-b border-foreground/10 last:border-b-0">
-                              <td className="p-2 font-mono text-xs">{String(op.start_date).slice(0, 10)}</td>
-                              <td className="p-2 font-mono text-xs">{String(op.end_date).slice(0, 10)}</td>
-                              <td className="p-2">{op.days}</td>
-                              <td className="p-2">{op.image_url ? "Yes" : "—"}</td>
-                            </tr>
-                          ))}
-                        </tbody>
-                      </table>
-                    </div>
-                  )}
-                </div>
-
-                <div className="space-y-2">
-                  <div className="text-sm font-medium">Mess concessions</div>
-                  {details.mess_concessions.length === 0 ? (
-                    <div className="text-sm opacity-70">No mess concessions.</div>
-                  ) : (
-                    <div className="overflow-auto border border-foreground/10 rounded-lg">
-                      <table className="w-full text-sm">
-                        <thead className="bg-background/50">
-                          <tr>
-                            <th className="text-left p-2 border-b border-foreground/10">Start</th>
-                            <th className="text-left p-2 border-b border-foreground/10">End</th>
-                            <th className="text-left p-2 border-b border-foreground/10">Days</th>
-                            <th className="text-left p-2 border-b border-foreground/10">Image</th>
-                          </tr>
-                        </thead>
-                        <tbody>
-                          {details.mess_concessions.map((mc) => (
-                            <tr key={mc.id} className="border-b border-foreground/10 last:border-b-0">
-                              <td className="p-2 font-mono text-xs">{String(mc.start_date).slice(0, 10)}</td>
-                              <td className="p-2 font-mono text-xs">{String(mc.End_date).slice(0, 10)}</td>
-                              <td className="p-2">{mc.days}</td>
-                              <td className="p-2">{mc.image_url ? "Yes" : "—"}</td>
-                            </tr>
-                          ))}
-                        </tbody>
-                      </table>
-                    </div>
-                  )}
-                </div>
-              </div>
-            ) : null}
-          </div>
-        ) : null}
-
         <div className="overflow-x-auto">
           <table className="w-full text-sm">
             <thead className="text-left border-b border-foreground/10">
@@ -766,6 +635,7 @@ export default function StudentsPage() {
                 <th className="px-5 py-3">State</th>
                 <th className="px-5 py-3">Gender</th>
                 <th className="px-5 py-3">Room</th>
+                <th className="px-5 py-3">Details</th>
               </tr>
             </thead>
             <tbody>
@@ -773,29 +643,165 @@ export default function StudentsPage() {
                 const checked = selectedIds.has(s.id);
                 const active = activeStudentId === s.id;
                 return (
-                  <tr
-                    key={s.id}
-                    className={
-                      "border-b border-foreground/5 cursor-pointer hover:bg-foreground/5 " +
-                      (active ? "bg-foreground/10" : checked ? "bg-foreground/5" : "")
-                    }
-                    onClick={(e) => toggleOne(index, e.shiftKey)}
-                  >
-                    <td className="px-5 py-3">
-                      <input type="checkbox" checked={checked} readOnly />
-                    </td>
-                    <td className="px-5 py-3 font-mono text-xs">{s.roll_no}</td>
-                    <td className="px-5 py-3">{s.branch}</td>
-                    <td className="px-5 py-3">{s.state}</td>
-                    <td className="px-5 py-3">{s.gender}</td>
-                    <td className="px-5 py-3">{s.room_no}</td>
-                  </tr>
+                  <Fragment key={s.id}>
+                    <tr
+                      className={
+                        "border-b border-foreground/5 cursor-pointer hover:bg-foreground/5 " +
+                        (active ? "bg-foreground/10" : checked ? "bg-foreground/5" : "")
+                      }
+                      onClick={(e) => toggleOne(index, e.shiftKey)}
+                    >
+                      <td className="px-5 py-3">
+                        <input type="checkbox" checked={checked} readOnly />
+                      </td>
+                      <td className="px-5 py-3 font-mono text-xs">{s.roll_no}</td>
+                      <td className="px-5 py-3">{s.branch}</td>
+                      <td className="px-5 py-3">{s.state}</td>
+                      <td className="px-5 py-3">{s.gender}</td>
+                      <td className="px-5 py-3">{s.room_no}</td>
+                      <td className="px-5 py-3">
+                        <button
+                          type="button"
+                          className="text-xs rounded border border-foreground/30 px-2 py-1 hover:bg-foreground/5"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            toggleDetails(s.id);
+                          }}
+                        >
+                          {active ? "Hide details" : "View details"}
+                        </button>
+                      </td>
+                    </tr>
+
+                    {active ? (
+                      <tr className="border-b border-foreground/10">
+                        <td colSpan={7} className="px-5 py-4 bg-foreground/5">
+                          {detailsLoading ? <div className="text-sm opacity-70">Loading details…</div> : null}
+                          {detailsError ? <div className="text-sm text-red-600">{detailsError}</div> : null}
+
+                          {!detailsLoading && details ? (
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                              <div className="space-y-2">
+                                <div className="text-sm font-medium">Profile</div>
+                                <div className="text-sm space-y-1">
+                                  <div>
+                                    <span className="opacity-70">Roll:</span> <span className="font-mono">{details.student.roll_no}</span>
+                                  </div>
+                                  <div>
+                                    <span className="opacity-70">Name:</span> {details.student.name || "—"}
+                                  </div>
+                                  <div>
+                                    <span className="opacity-70">Student phone:</span> {details.student.std_phone_no || "—"}
+                                  </div>
+                                  <div>
+                                    <span className="opacity-70">Father name:</span> {details.student.father_name || "—"}
+                                  </div>
+                                  <div>
+                                    <span className="opacity-70">Father phone:</span> {details.student.father_phone_no || "—"}
+                                  </div>
+                                  <div>
+                                    <span className="opacity-70">Branch:</span> {details.student.branch}
+                                  </div>
+                                  <div>
+                                    <span className="opacity-70">State:</span> {details.student.state}
+                                  </div>
+                                  <div>
+                                    <span className="opacity-70">Gender:</span> {details.student.gender}
+                                  </div>
+                                  <div>
+                                    <span className="opacity-70">Room:</span> {details.room?.room_no ?? details.student.room_no}
+                                    {details.room ? <span className="opacity-70"> (floor {details.room.floor})</span> : null}
+                                  </div>
+                                </div>
+                              </div>
+
+                              <div className="space-y-2">
+                                <div className="text-sm font-medium">Roommates</div>
+                                {details.roommates.length === 0 ? (
+                                  <div className="text-sm opacity-70">No roommates found.</div>
+                                ) : (
+                                  <div className="space-y-1">
+                                    {details.roommates.map((rm) => (
+                                      <div key={rm.id} className="text-sm">
+                                        <span className="font-mono text-xs">{rm.roll_no}</span>
+                                        {rm.name ? <span className="opacity-80"> • {rm.name}</span> : null}
+                                      </div>
+                                    ))}
+                                  </div>
+                                )}
+                              </div>
+
+                              <div className="space-y-2">
+                                <div className="text-sm font-medium">Outpasses</div>
+                                {details.outpasses.length === 0 ? (
+                                  <div className="text-sm opacity-70">No outpasses.</div>
+                                ) : (
+                                  <div className="overflow-auto border border-foreground/10 rounded-lg">
+                                    <table className="w-full text-sm">
+                                      <thead className="bg-background/50">
+                                        <tr>
+                                          <th className="text-left p-2 border-b border-foreground/10">Start</th>
+                                          <th className="text-left p-2 border-b border-foreground/10">End</th>
+                                          <th className="text-left p-2 border-b border-foreground/10">Days</th>
+                                          <th className="text-left p-2 border-b border-foreground/10">Image</th>
+                                        </tr>
+                                      </thead>
+                                      <tbody>
+                                        {details.outpasses.map((op) => (
+                                          <tr key={op.id} className="border-b border-foreground/10 last:border-b-0">
+                                            <td className="p-2 font-mono text-xs">{String(op.start_date).slice(0, 10)}</td>
+                                            <td className="p-2 font-mono text-xs">{String(op.end_date).slice(0, 10)}</td>
+                                            <td className="p-2">{op.days}</td>
+                                            <td className="p-2">{op.image_url ? "Yes" : "—"}</td>
+                                          </tr>
+                                        ))}
+                                      </tbody>
+                                    </table>
+                                  </div>
+                                )}
+                              </div>
+
+                              <div className="space-y-2">
+                                <div className="text-sm font-medium">Mess concessions</div>
+                                {details.mess_concessions.length === 0 ? (
+                                  <div className="text-sm opacity-70">No mess concessions.</div>
+                                ) : (
+                                  <div className="overflow-auto border border-foreground/10 rounded-lg">
+                                    <table className="w-full text-sm">
+                                      <thead className="bg-background/50">
+                                        <tr>
+                                          <th className="text-left p-2 border-b border-foreground/10">Start</th>
+                                          <th className="text-left p-2 border-b border-foreground/10">End</th>
+                                          <th className="text-left p-2 border-b border-foreground/10">Days</th>
+                                          <th className="text-left p-2 border-b border-foreground/10">Image</th>
+                                        </tr>
+                                      </thead>
+                                      <tbody>
+                                        {details.mess_concessions.map((mc) => (
+                                          <tr key={mc.id} className="border-b border-foreground/10 last:border-b-0">
+                                            <td className="p-2 font-mono text-xs">{String(mc.start_date).slice(0, 10)}</td>
+                                            <td className="p-2 font-mono text-xs">{String(mc.End_date).slice(0, 10)}</td>
+                                            <td className="p-2">{mc.days}</td>
+                                            <td className="p-2">{mc.image_url ? "Yes" : "—"}</td>
+                                          </tr>
+                                        ))}
+                                      </tbody>
+                                    </table>
+                                  </div>
+                                )}
+                              </div>
+                            </div>
+                          ) : null}
+                        </td>
+                      </tr>
+                    ) : null}
+                  </Fragment>
                 );
               })}
 
               {filteredStudents.length === 0 && !isLoading ? (
                 <tr>
-                  <td className="px-5 py-6 text-sm opacity-70" colSpan={6}>
+                  <td className="px-5 py-6 text-sm opacity-70" colSpan={7}>
                     No students found.
                   </td>
                 </tr>

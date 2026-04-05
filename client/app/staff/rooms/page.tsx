@@ -299,6 +299,21 @@ export default function RoomsPage() {
     if (!auth) return;
     const target = prompt(`Move this student to which Room Number? (e.g. 305)`);
     if (!target || target === String(currentRoomNo)) return;
+
+    const targetNo = Number(target.trim());
+    if (!Number.isFinite(targetNo) || targetNo <= 0) {
+      alert("Invalid room number");
+      return;
+    }
+
+    const targetRoom = rooms.find((r) => r.room_no === targetNo);
+    if (targetRoom) {
+      const cap = targetRoom.room_no % 100 <= 20 && targetRoom.floor === 0 ? 4 : 5;
+      if (targetRoom.students.length >= cap) {
+        alert(`Room ${targetNo} is full (${targetRoom.students.length}/${cap}).`);
+        return;
+      }
+    }
     try {
       await apiPost(`/students/${studentId}/move`, { room_no: target.trim() }, auth.token);
       fetchRooms();
@@ -471,7 +486,8 @@ export default function RoomsPage() {
               ) : (
                 filteredRooms.map((room) => {
                   const isActive = activeRoomId === room.id;
-                  const isFull = room.students.length >= 4;
+                  const capacity = room.room_no % 100 <= 20 && room.floor === 0 ? 4 : 5;
+                  const isNearFull = room.students.length >= Math.max(0, capacity - 1);
                   
                   return (
                     <Fragment key={room.id}>
@@ -482,8 +498,8 @@ export default function RoomsPage() {
                         <td className="px-5 py-4 font-mono font-medium">{room.room_no}</td>
                         <td className="px-5 py-4">{room.floor === 0 ? 'Ground' : `Floor ${room.floor}`}</td>
                         <td className="px-5 py-4">
-                          <span className={`inline-flex px-2 py-0.5 rounded text-xs font-medium ${isFull ? 'bg-green-500/10 text-green-600 dark:text-green-400' : 'bg-yellow-500/10 text-yellow-600 dark:text-yellow-400'}`}>
-                            {room.students.length} / {room.room_no % 100 <= 20 && room.floor === 0 ? 4 : 5}
+                          <span className={`inline-flex px-2 py-0.5 rounded text-xs font-medium ${isNearFull ? 'bg-green-500/10 text-green-600 dark:text-green-400' : 'bg-yellow-500/10 text-yellow-600 dark:text-yellow-400'}`}>
+                            {room.students.length} / {capacity}
                           </span>
                         </td>
                         <td className="px-5 py-4 text-right">

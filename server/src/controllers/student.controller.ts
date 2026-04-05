@@ -49,6 +49,26 @@ function validateRollNoAndBranch(rollNo: string, branch: string): string | null 
   return null;
 }
 
+function roomCapacity(roomNo: number, floor: number) {
+  // Ground floor rooms 001–020 are 4-sharing, everything else is 5-sharing.
+  if (floor === 0 && roomNo >= 1 && roomNo <= 20) return 4;
+  return 5;
+}
+
+async function assertRoomHasSpace(roomId: string, incoming: number, tx: any = prisma) {
+  const room = await tx.room.findUnique({
+    where: { id: roomId },
+    select: { id: true, room_no: true, floor: true, _count: { select: { students: true } } },
+  });
+  if (!room) throw new Error("Room not found");
+
+  const cap = roomCapacity(room.room_no, room.floor);
+  const current = room._count.students;
+  if (current + incoming > cap) {
+    throw new Error(`Room ${toRoomNumberString(room.room_no)} (floor ${room.floor}) is full (${current}/${cap}).`);
+  }
+}
+
 export async function resolveRoomId(input: string, tx: { room: any } = prisma as any) {
   const trimmed = input.trim();
   if (!trimmed) throw new Error("room_no is required");
@@ -101,7 +121,6 @@ function serializeStudentForApi(student: {
     branch: student.branch,
     state: student.state,
     gender: student.gender,
-    // Expose human room number when available, otherwise fall back to raw.
     room_no: student.Room?.room_no != null ? toRoomNumberString(student.Room.room_no) : student.room_no,
   };
 }
@@ -121,6 +140,14 @@ export async function createStudent(req: Request, res: Response) {
   }
 
   const roomId = body.room_no ? await resolveRoomId(body.room_no) : null;
+
+  if (roomId) {
+    try {
+      await assertRoomHasSpace(roomId, 1);
+    } catch (e) {
+      return res.status(400).json({ error: e instanceof Error ? e.message : "Room is full" });
+    }
+  }
 
   const student = await prisma.student.create({
     data: {
@@ -178,8 +205,7 @@ export async function bulkCreateStudents(req: Request, res: Response) {
     }
   }
 
-  const result = await prisma.student.createMany({
-    data: students.map((s) => {
+  const data = students.map((s) => {
       const roomInput = String(s.room_no || "").trim();
       const resolvedRoomId = roomInput ? (isLikelyUuid(roomInput) ? roomInput : (roomIdByInput.get(roomInput) ?? roomInput)) : null;
 
@@ -203,7 +229,50 @@ export async function bulkCreateStudents(req: Request, res: Response) {
         gender: (s.gender ?? "MALE")!,
         room_no: resolvedRoomId,
       };
-    }),
+    });
+
+  const incomingByRoomId = new Map<string, number>();
+  for (const row of data) {
+    if (!row.room_no) continue;
+    incomingByRoomId.set(row.room_no, (incomingByRoomId.get(row.room_no) ?? 0) + 1);
+  }
+
+  if (incomingByRoomId.size > 0) {
+    const roomIds = Array.from(incomingByRoomId.keys());
+    const rooms = await prisma.room.findMany({
+      where: { id: { in: roomIds } },
+      select: { id: true, room_no: true, floor: true, _count: { select: { students: true } } },
+    });
+
+    const roomById = new Map(rooms.map((r) => [r.id, r] as const));
+    const missingRoomIds = roomIds.filter((id) => !roomById.has(id));
+    if (missingRoomIds.length > 0) {
+      return res.status(400).json({ error: "One or more rooms do not exist", missing_room_ids: missingRoomIds });
+    }
+
+    const violations: Array<{ room_no: string; floor: number; current: number; incoming: number; capacity: number }> = [];
+    for (const r of rooms) {
+      const incoming = incomingByRoomId.get(r.id) ?? 0;
+      const cap = roomCapacity(r.room_no, r.floor);
+      const current = r._count.students;
+      if (current + incoming > cap) {
+        violations.push({
+          room_no: toRoomNumberString(r.room_no),
+          floor: r.floor,
+          current,
+          incoming,
+          capacity: cap,
+        });
+      }
+    }
+
+    if (violations.length > 0) {
+      return res.status(400).json({ error: "Room capacity exceeded", violations });
+    }
+  }
+
+  const result = await prisma.student.createMany({
+    data,
     skipDuplicates: true,
   });
 
@@ -386,7 +455,7 @@ export async function assignRooms(req: Request, res: Response) {
   console.log(`[AssignRooms] DB completely verified. All ${allRollNos.length} students exist.`);
 
   // Compute available rooms per floor. Prefer empty rooms; also allow rooms that will be fully vacated
-  // by this operation (i.e., all occupants are in the provided roll_no list).
+  // by this operation (all occupants are in the provided roll_no list).
 
   async function computeAvailableRoomsForFloor(floor: number) {
     const candidateRoomNos = buildRoomNumbersForFloor(floor);
@@ -433,6 +502,14 @@ export async function assignRooms(req: Request, res: Response) {
     students,
     floor: idx < maxOnA ? floorA : floorB,
   }));
+
+  // Enforce per-room capacity: floor 0 (001–020) only supports 4 students.
+  const invalidOnGroundIndex = groupsWithFloor.findIndex((g) => g.floor === 0 && g.students.length > 4);
+  if (invalidOnGroundIndex !== -1) {
+    return res.status(400).json({
+      error: `groups[${invalidOnGroundIndex}] has ${groupsWithFloor[invalidOnGroundIndex]!.students.length} students but floor 0 rooms support max 4`,
+    });
+  }
 
   const assignments: { floor: number; roomNo: number; students: string[] }[] = [];
   for (const group of groupsWithFloor) {
@@ -483,11 +560,25 @@ export async function moveStudentRoom(req: Request, res: Response) {
   const { room_no } = req.body;
   if (!room_no) return res.status(400).json({ error: "room_no is required" });
 
-  const student = await prisma.student.findUnique({ where: { id } });
-  if (!student) return res.status(404).json({ error: "Student not found" });
+  try {
+    await prisma.$transaction(async (tx) => {
+      const student = await tx.student.findUnique({ where: { id }, select: { id: true, room_no: true } });
+      if (!student) {
+        const err = new Error("Student not found");
+        (err as any).statusCode = 404;
+        throw err;
+      }
 
-  const roomId = await resolveRoomId(String(room_no));
-  await prisma.student.update({ where: { id }, data: { room_no: roomId } });
+      const roomId = await resolveRoomId(String(room_no), tx as any);
+      if (student.room_no && student.room_no === roomId) return;
+
+      await assertRoomHasSpace(roomId, 1, tx);
+      await tx.student.update({ where: { id }, data: { room_no: roomId } });
+    });
+  } catch (e) {
+    const statusCode = typeof e === "object" && e && "statusCode" in e ? Number((e as any).statusCode) : 400;
+    return res.status(Number.isFinite(statusCode) ? statusCode : 400).json({ error: e instanceof Error ? e.message : "Move failed" });
+  }
 
   return res.json({ success: true });
 }
